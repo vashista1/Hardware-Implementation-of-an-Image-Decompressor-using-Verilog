@@ -1,0 +1,155 @@
+/*
+Copyright by Henry Ko and Nicola Nicolici
+Developed for the Digital Systems Design course (COE3DQ4)
+Department of Electrical and Computer Engineering
+McMaster University
+Ontario, Canada
+*/
+
+`timescale 1ns/100ps
+`default_nettype none
+
+`include "define_state.h"
+
+module milestone1 (
+
+	input logic Clock,
+	input logic Resetn,
+	input logic startF,
+	output logic endF,
+	
+	//SRAM INTERFACE
+	
+	output logic[17:0] SRAM_address, //SRAM address is 18 bits
+	output logic[15:0] SRAM_write_data, //output to the SRAM is write data
+	output logic SRAM_we_n,
+	input logic [15:0] SRAM_read_data //input from SRAM interface is read data
+	
+	);
+	
+//state
+
+M1_state state;
+	
+//M1_state state;
+logic resetn;
+
+//registers
+logic[7:0]Y[1:0];
+logic[7:0]Uread[1:0];
+logic[7:0]Vread[1:0];
+
+logic[7:0] caseNum; //what common case the code is currently in
+logic caseToggle; //common case alternated between two sets of code
+logic[7:0]rowNum;
+
+logic [47:0] U; //stores all the terms that are needed when calculating Uprime
+logic [23:0] Uprime; //register hold 24 bit Uprime values
+logic [47:0] V; //stores all the terms that are needed when calculating Vprime
+logic [23:0] Vprime; 
+
+logic [17:0] Yaddr; //18 bit SRAM address for Y values
+logic [17:0] Uaddr; //18 bit SRAM address for U values
+logic [17:0] Vaddr; //18 bit SRAM address for V values
+logic [17:0] colouraddr;//18 bit address that tells where the colour pixel are stored 
+
+//ColorAccumulator
+
+logic [31:0]Rval; //Ymult*a + b*V[0]
+logic [31:0]Gval;
+logic [31:0]Bval;
+
+//RGB value for even pixel stored in register to write back to SRAM
+
+logic evenPixel[23:0];
+
+
+//RGB value for odd pixel stored in register to write back to SRAM
+
+logic oddPixel[23:0];
+
+//U Accumulators
+
+logic [31:0] Uacc; //= Multi0 - Multi1 +Multi2
+logic [31:0]Vacc; 
+
+
+//MULTIPLIERS
+
+assign resetn = Resetn;
+
+always_ff@(posedge Clock or negedge resetn) begin
+	if (resetn == 1'b0)begin
+	state<= IDLE;
+	
+	SRAM_we_n<= 1'b1; //SRAM goes back to reading
+	
+	SRAM_address<=18'd0;
+	
+	//when reset is applied these value get set back to original 
+	
+	Yaddr<=18'd0;
+	Uaddr<=18'd38400;
+	Vaddr<=18'd57600;
+	colouraddr<=18'd146944;
+	
+	caseToggle<=1'b0;
+	
+	endF  <= 1'b0; //reset pressed so starting program means end flag reset back to zero
+	rowNum<=8'd0;
+	caseNum<=8'd0;
+	
+	end else begin
+	case (state)
+	IDLE:begin
+		if(startF) begin
+			endF<= 1'b0;
+			caseNum<=1'b0;
+			rowNum<=1'b0;
+			caseToggle<=1'b0;
+			state<=LI0;
+		end
+	end
+			
+	LI0:begin
+		SRAM_address <= Yaddr; 
+		Yaddr<= Yaddr+18'd1; //address so increasement by 18'd1
+		SRAM_we_n<= 1'b1; //reading 
+		state<=LI1;
+	end
+		
+	LI1:begin
+		SRAM_address<=Uaddr;
+		Uaddr<=Uaddr+18'd1;
+		state<=LI2;
+	end
+		
+	LI2:begin
+		SRAM_address<=Uaddr;
+		Uaddr<= Uaddr+18'd1;
+		state<=LI3;
+	end
+		
+	LI3:begin //IN THIS STATE SRAM READ DATA IS FROM FIRST YADDR, 2 CLOCK CYCLES LATER
+		SRAM_address<= Uaddr;
+		Uaddr<= Uaddr+18'd1;
+		{Y[0],Y[1]}<= SRAM_read_data;//transferring data read to Y register, transfer will be complete in next clock cycle
+		state<=LI4;
+	end
+	
+	LI4:begin
+		SRAM_address<= Vaddr;
+		Vaddr<= Vaddr+18'd1;
+		Uprime <= {{16{0}},SRAM_read_data[15:8]};//take downsampled U information of pixel 0 from SRAM read data, sign extend and put into Uprime register as its the first value of Uprime
+		Uprime <= U[23:16];
+		
+	
+end
+endcase
+end
+end
+		
+		
+	
+	
+endmodule 
